@@ -1,0 +1,13 @@
+# Local overrides
+.env
+.env.*
+!.env.example
+
+# IDE / OS noise
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Logstash runtime state
+*.sincedb*

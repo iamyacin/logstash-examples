@@ -1,0 +1,79 @@
+name: logstash-examples
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_VERSION:-9.5.5}
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.enrollment.enabled: "false"
+      xpack.ml.enabled: "false"
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:${ELASTIC_VERSION:-9.5.5}
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      XPACK_SECURITY_ENABLED: "false"
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: dvdrental
+      POSTGRES_USER: ${PG_USER:-logstash}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-logstash}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./examples/06-postgres-to-elasticsearch/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-logstash} -d dvdrental"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  logstash:
+    profiles: ["pipeline"]
+    build:
+      context: ./docker/logstash
+      args:
+        ELASTIC_VERSION: ${ELASTIC_VERSION:-9.5.5}
+    image: logstash-examples/logstash:${ELASTIC_VERSION:-9.5.5}
+    environment:
+      ES_HOSTS: http://elasticsearch:9200
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DATABASE: dvdrental
+      PG_USER: ${PG_USER:-logstash}
+      PG_PASSWORD: ${PG_PASSWORD:-logstash}
+      LS_JAVA_OPTS: -Xms256m -Xmx256m
+    volumes:
+      # Each example is mounted read-only at /example. Switch examples with:
+      #   EXAMPLE=03-json-to-elasticsearch docker compose --profile pipeline run --rm logstash
+      - ./examples/${EXAMPLE:-01-csv-to-elasticsearch}:/example:ro
+    command: bin/logstash -f /example/pipeline/logstash.conf
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  es-data:
+  postgres-data:
