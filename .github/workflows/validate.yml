@@ -1,0 +1,30 @@
+name: Validate pipelines
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate and smoke-test pipelines
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate every pipeline
+        run: make validate
+
+      - name: Run pipelines against Elasticsearch
+        run: make smoke
+
+      - name: Clean up
+        if: always()
+        run: docker compose --profile pipeline down -v
